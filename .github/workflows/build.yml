@@ -1,0 +1,43 @@
+name: Build UniXNU Pipa
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 python3-pip python3-venv curl build-essential ninja-build cmake mtools device-tree-compiler uuid-dev iasl nasm gcc-aarch64-linux-gnu clang lld llvm
+
+      - name: Clone Repositories
+        run: |
+          mkdir -p "$HOME/workspace"
+          cd "$HOME/workspace"
+          git clone --recurse-submodules https://github.com/UniXNU/UniXNU.git
+          git clone https://github.com/EsaiJJ/UniXNU-pipa.git
+          git clone --recurse-submodules https://github.com/xVanTuring/uefi-pipa.git
+
+      - name: Setup UniXNU Linux Toolchain
+        run: |
+          cd "$HOME/workspace/UniXNU"
+          sudo python3 scripts/linux/setup-toolchain.py
+
+      - name: Build UEFI and Boot Image
+        run: |
+          cd "$HOME/workspace/UniXNU"
+          export UNIXNU_UEFI="$HOME/workspace/uefi-pipa"
+          ./unixnu defconfig -D ../UniXNU-pipa
+          ./unixnu fetch
+          ./unixnu build package -D ../UniXNU-pipa
+          ./unixnu build firmware -D ../UniXNU-pipa
+          ./unixnu bootimg -D ../UniXNU-pipa --dtb "$UNIXNU_UEFI/Resources/DTBs/pipa.dtb" --ramdisk none
+          cp out/pipa/boot/boot.img "$GITHUB_WORKSPACE/boot.img"
+
+      - name: Upload boot.img Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UniXNU-pipa-bootimg
+          path: boot.img
